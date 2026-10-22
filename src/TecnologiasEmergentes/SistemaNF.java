@@ -1,5 +1,6 @@
 package TecnologiasEmergentes;
 
+import java.util.logging.Logger;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -11,7 +12,8 @@ import java.util.List;
 import java.util.Scanner;
 
 public class SistemaNF {
-
+	private static final Logger logger =
+	        Logger.getLogger(SistemaNF.class.getName());
     static String url = "jdbc:mysql://localhost:3306/sistema_notas_faltas";
     static String usuarioBanco = System.getenv("MYSQL_APP_USER");
     static String senhaBanco = System.getenv("MYSQL_APP_PASSWORD");
@@ -47,10 +49,15 @@ public class SistemaNF {
                  ORDER BY n.id_nota DESC
                  LIMIT 1) AS nota,
 
-                (SELECT COALESCE(SUM(f.quantidade), 0)
-                 FROM falta f
-                 WHERE f.id_aluno = a.id_aluno
-                   AND f.id_disciplina = t.id_disciplina) AS faltas
+                COALESCE(
+                    (SELECT f.quantidade
+                     FROM falta f
+                     WHERE f.id_aluno = a.id_aluno
+                       AND f.id_disciplina = t.id_disciplina
+                     ORDER BY f.id_falta DESC
+                     LIMIT 1),
+                    0
+                ) AS faltas
 
             FROM aluno a
 
@@ -191,9 +198,15 @@ public class SistemaNF {
             }
         }
     }
+    private static void registrarErroConsulta(SQLException e) {
+        System.out.println("Não foi possível consultar os dados. Tente novamente.");
 
+        logger.warning("Erro na consulta ao MySQL. SQLState: "
+                + e.getSQLState()
+                + " | Código: "
+                + e.getErrorCode());
+    }
     public static int lerOpcao(Scanner entrada) {
-
         System.out.print("Digite uma opção: ");
 
         try {
@@ -242,9 +255,7 @@ public class SistemaNF {
                     mostrarDados(alunos, opcao);
 
                 } catch (SQLException e) {
-                    System.out.println(
-                        "Erro ao consultar os dados no MySQL."
-                    );
+                    registrarErroConsulta(e);
                 }
 
             } else if (opcao == 6) {
@@ -298,9 +309,7 @@ public class SistemaNF {
                     mostrarDados(alunos, opcao + 2);
 
                 } catch (SQLException e) {
-                    System.out.println(
-                        "Erro ao consultar os dados no MySQL."
-                    );
+                    registrarErroConsulta(e);
                 }
 
             } else if (opcao == 4) {

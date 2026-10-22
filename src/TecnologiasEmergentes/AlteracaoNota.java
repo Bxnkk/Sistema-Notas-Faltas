@@ -10,172 +10,197 @@ import java.util.Scanner;
 
 public class AlteracaoNota {
 
-    public static void executar(Scanner entrada, int idProfessor) {
+	public static void executar(Scanner entrada, int idProfessor) {
 
-        try {
-            System.out.print("Digite o ID do aluno: ");
-            int idAluno = Integer.parseInt(entrada.nextLine());
+		try {
+			System.out.print("Digite o ID do aluno: ");
+			int idAluno = Integer.parseInt(entrada.nextLine());
 
-            System.out.print("Digite a nova nota: ");
-            String valor = entrada.nextLine().replace(",", ".");
+			System.out.print("Digite a nova nota: ");
+			String valor = entrada.nextLine().replace(",", ".");
 
-            BigDecimal novaNota = new BigDecimal(valor)
-                    .setScale(2, RoundingMode.UNNECESSARY);
+			BigDecimal novaNota = new BigDecimal(valor).setScale(2, RoundingMode.UNNECESSARY);
 
-            if (novaNota.compareTo(BigDecimal.ZERO) < 0
-                    || novaNota.compareTo(new BigDecimal("10")) > 0) {
-                System.out.println("A nota deve estar entre 0 e 10.");
-                return;
-            }
+			if (novaNota.compareTo(BigDecimal.ZERO) < 0 || novaNota.compareTo(new BigDecimal("10")) > 0) {
+				System.out.println("A nota deve estar entre 0 e 10.");
+				return;
+			}
 
-            try (Connection conexao = DriverManager.getConnection(
-                    SistemaNF.url,
-                    SistemaNF.usuarioBanco,
-                    SistemaNF.senhaBanco)) {
+			try (Connection conexao = DriverManager.getConnection(SistemaNF.url, SistemaNF.usuarioBanco,
+					SistemaNF.senhaBanco)) {
 
-                conexao.setAutoCommit(false);
+				conexao.setAutoCommit(false);
 
-                try {
-                    String consulta = """
-                        SELECT n.id_nota, n.valor,
-                               a.nome AS aluno,
-                               d.nome AS disciplina
-                        FROM nota n
-                        JOIN aluno a ON n.id_aluno = a.id_aluno
-                        JOIN turma t ON a.id_turma = t.id_turma
-                        JOIN disciplina d
-                            ON n.id_disciplina = d.id_disciplina
-                        WHERE a.id_aluno = ?
-                          AND t.id_professor = ?
-                          AND n.id_disciplina = t.id_disciplina
-                        ORDER BY n.id_nota DESC
-                        LIMIT 1
-                        FOR UPDATE
-                        """;
+				try {
+					String consulta = """
+							SELECT n.id_nota, n.valor,
+							             a.nome AS aluno,
+							             t.id_disciplina AS id_disciplina
+							FROM aluno a
+							JOIN turma t ON a.id_turma = t.id_turma
+							   LEFT JOIN nota n
+							    ON n.id_aluno = a.id_aluno
+							    AND n.id_disciplina = t.id_disciplina
+							WHERE a.id_aluno = ?
+							  AND t.id_professor = ?
+							ORDER BY n.id_nota DESC
+							LIMIT 1
+							FOR UPDATE
+							""";
 
-                    int idNota;
-                    BigDecimal notaAntiga;
-                    String nomeAluno;
+					Integer idNota;
+					int idDisciplina;
+					BigDecimal notaAntiga;
+					String nomeAluno;
 
-                    try (PreparedStatement comando =
-                            conexao.prepareStatement(consulta)) {
+					try (PreparedStatement comando = conexao.prepareStatement(consulta)) {
 
-                        comando.setInt(1, idAluno);
-                        comando.setInt(2, idProfessor);
+						comando.setInt(1, idAluno);
+						comando.setInt(2, idProfessor);
 
-                        try (ResultSet resultado = comando.executeQuery()) {
+						try (ResultSet resultado = comando.executeQuery()) {
 
-                            if (!resultado.next()) {
-                                System.out.println(
-                                    "Nota não encontrada ou acesso não permitido."
-                                );
-                                conexao.rollback();
-                                return;
-                            }
+							if (!resultado.next()) {
+								System.out.println("Nota não encontrada ou acesso não permitido.");
+								conexao.rollback();
+								return;
+							}
 
-                            idNota = resultado.getInt("id_nota");
-                            notaAntiga = resultado.getBigDecimal("valor");
-                            nomeAluno = resultado.getString("aluno");
-                        }
-                    }
+							idNota = resultado.getObject("id_nota", Integer.class);
+							idDisciplina = resultado.getInt("id_disciplina");
+							notaAntiga = resultado.getBigDecimal("valor");
+							nomeAluno = resultado.getString("aluno");
+						}
+					}
 
-                    if (notaAntiga.compareTo(novaNota) == 0) {
-                        System.out.println("A nota já possui esse valor.");
-                        conexao.rollback();
-                        return;
-                    }
+					if (idNota != null && notaAntiga != null && notaAntiga.compareTo(novaNota) == 0) {
+						System.out.println("A nota já possui esse valor.");
+						conexao.rollback();
+						return;
+					}
 
-                    String hashAnterior = "0".repeat(64);
+					String hashAnterior = "0".repeat(64);
 
-                    String buscarHash = """
-                        SELECT hash_atual
-                        FROM historico_alteracoes
-                        ORDER BY id_historico DESC
-                        LIMIT 1
-                        FOR UPDATE
-                        """;
+					String buscarHash = """
+							SELECT hash_atual
+							FROM historico_alteracoes
+							ORDER BY id_historico DESC
+							LIMIT 1
+							FOR UPDATE
+							""";
 
-                    try (PreparedStatement comando =
-                            conexao.prepareStatement(buscarHash);
-                         ResultSet resultado = comando.executeQuery()) {
+					try (PreparedStatement comando = conexao.prepareStatement(buscarHash);
+							ResultSet resultado = comando.executeQuery()) {
 
-                        if (resultado.next()) {
-                            hashAnterior = resultado.getString("hash_atual");
-                        }
-                    }
+						if (resultado.next()) {
+							hashAnterior = resultado.getString("hash_atual");
+						}
+					}
 
-                    String atualizar =
-                        "UPDATE nota SET valor = ? WHERE id_nota = ?";
+					boolean cadastro = idNota == null;
+					if (idNota == null) {
 
-                    try (PreparedStatement comando =
-                            conexao.prepareStatement(atualizar)) {
+						String inserirNota = "INSERT INTO nota (valor, id_aluno, id_disciplina) VALUES (?, ?, ?)";
 
-                        comando.setBigDecimal(1, novaNota);
-                        comando.setInt(2, idNota);
-                        comando.executeUpdate();
-                    }
+						try (PreparedStatement comando = conexao.prepareStatement(inserirNota,
+								Statement.RETURN_GENERATED_KEYS)) {
 
-                    String tipo = "NOTA";
-                    String acao = "ALTERACAO";
+							comando.setBigDecimal(1, novaNota);
+							comando.setInt(2, idAluno);
+							comando.setInt(3, idDisciplina);
+							comando.executeUpdate();
 
-                    String descricao = "Nota alterada: "
-                            + notaAntiga.toPlainString()
-                            + " -> "
-                            + novaNota.toPlainString();
+							try (ResultSet chaves = comando.getGeneratedKeys()) {
+								if (chaves.next()) {
+									idNota = chaves.getInt(1);
+								} else {
+									throw new SQLException("Não foi possível obter o ID da nova nota.");
+								}
+							}
+						}
 
-                    LocalDateTime data = LocalDateTime.now()
-                            .truncatedTo(ChronoUnit.SECONDS);
+					} else {
 
-                    String dados = tipo + "|" + idNota + "|"
-                            + acao + "|" + descricao + "|"
-                            + data.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)
-                            + "|" + hashAnterior;
+						String atualizar = "UPDATE nota SET valor = ? WHERE id_nota = ?";
 
-                    String hashAtual = GeradorHash.gerarHash(dados);
+						try (PreparedStatement comando = conexao.prepareStatement(atualizar)) {
 
-                    String inserir = """
-                        INSERT INTO historico_alteracoes
-                        (tipo_registro, id_registro, acao,
-                         descricao, data_registro,
-                         hash_anterior, hash_atual)
-                        VALUES (?, ?, ?, ?, ?, ?, ?)
-                        """;
+							comando.setBigDecimal(1, novaNota);
+							comando.setInt(2, idNota);
+							comando.executeUpdate();
+						}
+					}
 
-                    try (PreparedStatement comando =
-                            conexao.prepareStatement(inserir)) {
+					String tipo = "NOTA";
+					String acao = cadastro ? "CADASTRO" : "ALTERACAO";
 
-                        comando.setString(1, tipo);
-                        comando.setInt(2, idNota);
-                        comando.setString(3, acao);
-                        comando.setString(4, descricao);
-                        comando.setTimestamp(5, Timestamp.valueOf(data));
-                        comando.setString(6, hashAnterior);
-                        comando.setString(7, hashAtual);
+					String descricao;
 
-                        comando.executeUpdate();
-                    }
+					if (cadastro) {
+						descricao = "Nota cadastrada: " + novaNota.toPlainString();
+					} else {
+						descricao = "Nota alterada: " + notaAntiga.toPlainString() + " -> " + novaNota.toPlainString();
+					}
 
-                    conexao.commit();
+					descricao += " | Professor ID: " + idProfessor;
 
-                    System.out.println();
-                    System.out.println("Nota alterada com sucesso!");
-                    System.out.println("Aluno: " + nomeAluno);
-                    System.out.println("Nota anterior: " + notaAntiga);
-                    System.out.println("Nova nota: " + novaNota);
-                    System.out.println("Histórico registrado com SHA-256!");
+					LocalDateTime data = LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS);
 
-                } catch (Exception e) {
-                    conexao.rollback();
-                    throw e;
-                }
-            }
+					String dados = tipo + "|" + idNota + "|" + acao + "|" + descricao + "|"
+							+ data.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME) + "|" + hashAnterior;
 
-        } catch (NumberFormatException | ArithmeticException e) {
-            System.out.println("Informe um ID e uma nota válidos.");
+					String hashAtual = GeradorHash.gerarHash(dados);
 
-        } catch (Exception e) {
-            System.out.println("Erro ao alterar a nota.");
-            System.out.println(e.getMessage());
-        }
-    }
+					String inserir = """
+							INSERT INTO historico_alteracoes
+							(tipo_registro, id_registro, acao,
+							 descricao, data_registro,
+							 hash_anterior, hash_atual)
+							VALUES (?, ?, ?, ?, ?, ?, ?)
+							""";
+
+					try (PreparedStatement comando = conexao.prepareStatement(inserir)) {
+
+						comando.setString(1, tipo);
+						comando.setInt(2, idNota);
+						comando.setString(3, acao);
+						comando.setString(4, descricao);
+						comando.setTimestamp(5, Timestamp.valueOf(data));
+						comando.setString(6, hashAnterior);
+						comando.setString(7, hashAtual);
+
+						comando.executeUpdate();
+					}
+
+					conexao.commit();
+
+					System.out.println();
+
+					if (cadastro) {
+						System.out.println("Nota cadastrada com sucesso!");
+						System.out.println("Aluno: " + nomeAluno);
+						System.out.println("Nota cadastrada: " + novaNota);
+					} else {
+						System.out.println("Nota alterada com sucesso!");
+						System.out.println("Aluno: " + nomeAluno);
+						System.out.println("Nota anterior: " + notaAntiga);
+						System.out.println("Nova nota: " + novaNota);
+					}
+
+					System.out.println("Histórico registrado com SHA-256!");
+
+				} catch (Exception e) {
+					conexao.rollback();
+					throw e;
+				}
+			}
+
+		} catch (NumberFormatException | ArithmeticException e) {
+			System.out.println("Informe um ID e uma nota válidos.");
+
+		} catch (Exception e) {
+			System.out.println("Erro ao alterar a nota.");
+			System.out.println(e.getMessage());
+		}
+	}
 }
