@@ -121,6 +121,7 @@ public class AlteracaoFalta {
                             + quantidadeAntiga
                             + " -> "
                             + novaQuantidade;
+                    descricao += " | Professor ID: " + idProfessor;
 
                     LocalDateTime data = LocalDateTime.now()
                             .truncatedTo(ChronoUnit.SECONDS);
