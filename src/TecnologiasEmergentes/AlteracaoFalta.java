@@ -8,180 +8,201 @@ import java.util.Scanner;
 
 public class AlteracaoFalta {
 
-    public static void executar(Scanner entrada, int idProfessor) {
+	public static void executar(Scanner entrada, int idProfessor) {
 
-        try {
-            System.out.print("Digite o ID do aluno: ");
-            int idAluno = Integer.parseInt(entrada.nextLine());
+		try {
+			System.out.print("Digite o ID do aluno: ");
+			int idAluno = Integer.parseInt(entrada.nextLine());
 
-            System.out.print("Digite a nova quantidade de faltas: ");
-            int novaQuantidade = Integer.parseInt(entrada.nextLine());
+			System.out.print("Digite a nova quantidade de faltas: ");
+			int novaQuantidade = Integer.parseInt(entrada.nextLine());
 
-            if (novaQuantidade < 0) {
-                System.out.println("A quantidade não pode ser negativa.");
-                return;
-            }
+			if (novaQuantidade < 0) {
+				System.out.println("A quantidade não pode ser negativa.");
+				return;
+			}
 
-            if (novaQuantidade > 120) {
-                System.out.println("A quantidade não pode ultrapassar 120 aulas.");
-                return;
-            }
+			if (novaQuantidade > 120) {
+				System.out.println("A quantidade não pode ultrapassar 120 aulas.");
+				return;
+			}
 
-            try (Connection conexao = DriverManager.getConnection(
-                    SistemaNF.url,
-                    SistemaNF.usuarioBanco,
-                    SistemaNF.senhaBanco)) {
+			try (Connection conexao = DriverManager.getConnection(SistemaNF.url, SistemaNF.usuarioBanco,
+					SistemaNF.senhaBanco)) {
 
-                conexao.setAutoCommit(false);
+				conexao.setAutoCommit(false);
 
-                try {
+				try {
 
-                    String consulta = """
-                        SELECT f.id_falta, f.quantidade,
-                               a.nome AS aluno
-                        FROM falta f
-                        JOIN aluno a ON f.id_aluno = a.id_aluno
-                        JOIN turma t ON a.id_turma = t.id_turma
-                        WHERE a.id_aluno = ?
-                          AND t.id_professor = ?
-                          AND f.id_disciplina = t.id_disciplina
-                        ORDER BY f.id_falta DESC
-                        LIMIT 1
-                        FOR UPDATE
-                        """;
+					String consulta = """
+							SELECT f.id_falta, f.quantidade,
+							       a.nome AS aluno,
+							       t.id_disciplina AS id_disciplina
+							FROM aluno a
+							JOIN turma t ON a.id_turma = t.id_turma
+							LEFT JOIN falta f
+							    ON f.id_aluno = a.id_aluno
+							    AND f.id_disciplina = t.id_disciplina
+							WHERE a.id_aluno = ?
+							  AND t.id_professor = ?
+							ORDER BY f.id_falta DESC
+							LIMIT 1
+							FOR UPDATE
+							""";
 
-                    int idFalta;
-                    int quantidadeAntiga;
-                    String nomeAluno;
+					Integer idFalta;
+					int idDisciplina;
+					Integer quantidadeAntiga;
+					String nomeAluno;
 
-                    try (PreparedStatement comando =
-                            conexao.prepareStatement(consulta)) {
+					try (PreparedStatement comando = conexao.prepareStatement(consulta)) {
 
-                        comando.setInt(1, idAluno);
-                        comando.setInt(2, idProfessor);
+						comando.setInt(1, idAluno);
+						comando.setInt(2, idProfessor);
 
-                        try (ResultSet resultado = comando.executeQuery()) {
+						try (ResultSet resultado = comando.executeQuery()) {
 
-                            if (!resultado.next()) {
-                                System.out.println(
-                                    "Registro não encontrado ou acesso não permitido."
-                                );
-                                conexao.rollback();
-                                return;
-                            }
+							if (!resultado.next()) {
+								System.out.println("Registro não encontrado ou acesso não permitido.");
+								conexao.rollback();
+								return;
+							}
 
-                            idFalta = resultado.getInt("id_falta");
-                            quantidadeAntiga = resultado.getInt("quantidade");
-                            nomeAluno = resultado.getString("aluno");
-                        }
-                    }
+							idFalta = resultado.getObject("id_falta", Integer.class);
+							idDisciplina = resultado.getInt("id_disciplina");
+							quantidadeAntiga = resultado.getObject("quantidade", Integer.class);
+							nomeAluno = resultado.getString("aluno");
+						}
+					}
 
-                    if (quantidadeAntiga == novaQuantidade) {
-                        System.out.println(
-                            "A quantidade de faltas já possui esse valor."
-                        );
-                        conexao.rollback();
-                        return;
-                    }
+					if (idFalta != null && quantidadeAntiga != null && quantidadeAntiga == novaQuantidade) {
+						System.out.println("A quantidade de faltas já possui esse valor.");
+						conexao.rollback();
+						return;
+					}
 
-                    String hashAnterior = "0".repeat(64);
+					String hashAnterior = "0".repeat(64);
 
-                    String buscarHash = """
-                        SELECT hash_atual
-                        FROM historico_alteracoes
-                        ORDER BY id_historico DESC
-                        LIMIT 1
-                        FOR UPDATE
-                        """;
+					String buscarHash = """
+							SELECT hash_atual
+							FROM historico_alteracoes
+							ORDER BY id_historico DESC
+							LIMIT 1
+							FOR UPDATE
+							""";
 
-                    try (PreparedStatement comando =
-                            conexao.prepareStatement(buscarHash);
-                         ResultSet resultado = comando.executeQuery()) {
+					try (PreparedStatement comando = conexao.prepareStatement(buscarHash);
+							ResultSet resultado = comando.executeQuery()) {
 
-                        if (resultado.next()) {
-                            hashAnterior = resultado.getString("hash_atual");
-                        }
-                    }
+						if (resultado.next()) {
+							hashAnterior = resultado.getString("hash_atual");
+						}
+					}
 
-                    String atualizar =
-                        "UPDATE falta SET quantidade = ? WHERE id_falta = ?";
+					boolean cadastro = idFalta == null;
+					if (cadastro) {
 
-                    try (PreparedStatement comando =
-                            conexao.prepareStatement(atualizar)) {
+						String inserirFalta = "INSERT INTO falta (quantidade, id_aluno, id_disciplina) VALUES (?, ?, ?)";
 
-                        comando.setInt(1, novaQuantidade);
-                        comando.setInt(2, idFalta);
-                        comando.executeUpdate();
-                    }
+						try (PreparedStatement comando = conexao.prepareStatement(inserirFalta,
+								Statement.RETURN_GENERATED_KEYS)) {
 
-                    String tipo = "FALTA";
-                    String acao = "ALTERACAO";
+							comando.setInt(1, novaQuantidade);
+							comando.setInt(2, idAluno);
+							comando.setInt(3, idDisciplina);
+							comando.executeUpdate();
 
-                    String descricao = "Faltas alteradas: "
-                            + quantidadeAntiga
-                            + " -> "
-                            + novaQuantidade;
-                    descricao += " | Professor ID: " + idProfessor;
+							try (ResultSet chaves = comando.getGeneratedKeys()) {
+								if (chaves.next()) {
+									idFalta = chaves.getInt(1);
+								} else {
+									throw new SQLException("Não foi possível obter o ID do novo registro de faltas.");
+								}
+							}
+						}
 
-                    LocalDateTime data = LocalDateTime.now()
-                            .truncatedTo(ChronoUnit.SECONDS);
+					} else {
 
-                    String dados = tipo + "|" + idFalta + "|"
-                            + acao + "|" + descricao + "|"
-                            + data.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)
-                            + "|" + hashAnterior;
+						String atualizar = "UPDATE falta SET quantidade = ? WHERE id_falta = ?";
 
-                    String hashAtual = GeradorHash.gerarHash(dados);
+						try (PreparedStatement comando = conexao.prepareStatement(atualizar)) {
 
-                    String inserir = """
-                        INSERT INTO historico_alteracoes
-                        (tipo_registro, id_registro, acao,
-                         descricao, data_registro,
-                         hash_anterior, hash_atual)
-                        VALUES (?, ?, ?, ?, ?, ?, ?)
-                        """;
+							comando.setInt(1, novaQuantidade);
+							comando.setInt(2, idFalta);
+							comando.executeUpdate();
+						}
+					}
 
-                    try (PreparedStatement comando =
-                            conexao.prepareStatement(inserir)) {
+					String tipo = "FALTA";
+					String acao = cadastro ? "CADASTRO" : "ALTERACAO";
 
-                        comando.setString(1, tipo);
-                        comando.setInt(2, idFalta);
-                        comando.setString(3, acao);
-                        comando.setString(4, descricao);
-                        comando.setTimestamp(5, Timestamp.valueOf(data));
-                        comando.setString(6, hashAnterior);
-                        comando.setString(7, hashAtual);
+					String descricao;
 
-                        comando.executeUpdate();
-                    }
+					if (cadastro) {
+						descricao = "Faltas cadastradas: " + novaQuantidade;
+					} else {
+						descricao = "Faltas alteradas: " + quantidadeAntiga + " -> " + novaQuantidade;
+					}
 
-                    conexao.commit();
+					descricao += " | Professor ID: " + idProfessor;
 
-                    System.out.println();
-                    System.out.println("Faltas alteradas com sucesso!");
-                    System.out.println("Aluno: " + nomeAluno);
-                    System.out.println(
-                        "Quantidade anterior: " + quantidadeAntiga
-                    );
-                    System.out.println(
-                        "Nova quantidade: " + novaQuantidade
-                    );
-                    System.out.println(
-                        "Histórico registrado com SHA-256!"
-                    );
+					LocalDateTime data = LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS);
 
-                } catch (Exception e) {
-                    conexao.rollback();
-                    throw e;
-                }
-            }
+					String dados = tipo + "|" + idFalta + "|" + acao + "|" + descricao + "|"
+							+ data.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME) + "|" + hashAnterior;
 
-        } catch (NumberFormatException e) {
-            System.out.println("Informe números inteiros válidos.");
+					String hashAtual = GeradorHash.gerarHash(dados);
 
-        } catch (Exception e) {
-            System.out.println("Erro ao alterar as faltas.");
-            System.out.println(e.getMessage());
-        }
-    }
+					String inserir = """
+							INSERT INTO historico_alteracoes
+							(tipo_registro, id_registro, acao,
+							 descricao, data_registro,
+							 hash_anterior, hash_atual)
+							VALUES (?, ?, ?, ?, ?, ?, ?)
+							""";
+
+					try (PreparedStatement comando = conexao.prepareStatement(inserir)) {
+
+						comando.setString(1, tipo);
+						comando.setInt(2, idFalta);
+						comando.setString(3, acao);
+						comando.setString(4, descricao);
+						comando.setTimestamp(5, Timestamp.valueOf(data));
+						comando.setString(6, hashAnterior);
+						comando.setString(7, hashAtual);
+
+						comando.executeUpdate();
+					}
+
+					conexao.commit();
+
+					System.out.println();
+
+					if (cadastro) {
+						System.out.println("Faltas cadastradas com sucesso!");
+						System.out.println("Aluno: " + nomeAluno);
+						System.out.println("Quantidade cadastrada: " + novaQuantidade);
+					} else {
+						System.out.println("Faltas alteradas com sucesso!");
+						System.out.println("Aluno: " + nomeAluno);
+						System.out.println("Quantidade anterior: " + quantidadeAntiga);
+						System.out.println("Nova quantidade: " + novaQuantidade);
+					}
+
+					System.out.println("Histórico registrado com SHA-256!");
+
+				} catch (Exception e) {
+					conexao.rollback();
+					throw e;
+				}
+			}
+
+		} catch (NumberFormatException e) {
+			System.out.println("Informe números inteiros válidos.");
+
+		} catch (Exception e) {
+			System.out.println("Erro ao alterar as faltas.");
+			System.out.println(e.getMessage());
+		}
+	}
 }
