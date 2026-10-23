@@ -77,7 +77,7 @@ public class SistemaNF {
         }
 
         if (tipo.equals("PROFESSOR") && nomeBusca != null) {
-            sql += " AND a.nome = ?";
+            sql += " AND a.nome LIKE ?";
         }
 
         sql += " ORDER BY a.nome";
@@ -93,7 +93,7 @@ public class SistemaNF {
             comando.setInt(1, idUsuario);
 
             if (tipo.equals("PROFESSOR") && nomeBusca != null) {
-                comando.setString(2, nomeBusca);
+                comando.setString(2, "%" + nomeBusca.trim() + "%");
             }
 
             try (ResultSet resultado = comando.executeQuery()) {
