@@ -6,10 +6,10 @@ Projeto desenvolvido em Java e MySQL para o gerenciamento de notas e faltas de a
 
 - Login de professores e alunos.
 - Controle de acesso por tipo de usuário.
-- Listagem e busca de alunos pelo professor.
+- Listagem e busca de alunos pelo professor, incluindo busca por parte do nome.
 - Consulta de notas, faltas e situação acadêmica.
 - Cadastro da primeira nota de alunos que ainda não possuem nota.
-- Alteração de notas e faltas pelo professor.
+- Cadastro e alteração de notas e faltas pelo professor.
 - Verificação da situação do aluno, considerando nota mínima de 6,0 e frequência mínima de 75%, com um total de 120 aulas.
 - Histórico de alterações utilizando uma cadeia de hashes SHA-256.
 - Identificação do professor responsável nos novos registros de alterações.
