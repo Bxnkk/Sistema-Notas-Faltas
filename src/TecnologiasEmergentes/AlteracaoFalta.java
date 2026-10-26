@@ -11,8 +11,15 @@ public class AlteracaoFalta {
 	public static void executar(Scanner entrada, int idProfessor) {
 
 		try {
-			System.out.print("Digite o ID do aluno: ");
-			int idAluno = Integer.parseInt(entrada.nextLine());
+			System.out.print("Digite a matrícula do aluno: ");
+			String matricula = entrada.nextLine().trim();
+
+			if (matricula.isEmpty()) {
+				System.out.println("Informe uma matrícula válida.");
+				return;
+			}
+
+			int idAluno;
 
 			System.out.print("Digite a nova quantidade de faltas: ");
 			int novaQuantidade = Integer.parseInt(entrada.nextLine());
@@ -36,6 +43,7 @@ public class AlteracaoFalta {
 
 					String consulta = """
 							SELECT f.id_falta, f.quantidade,
+							       a.id_aluno AS id_aluno,
 							       a.nome AS aluno,
 							       t.id_disciplina AS id_disciplina
 							FROM aluno a
@@ -43,7 +51,7 @@ public class AlteracaoFalta {
 							LEFT JOIN falta f
 							    ON f.id_aluno = a.id_aluno
 							    AND f.id_disciplina = t.id_disciplina
-							WHERE a.id_aluno = ?
+							WHERE a.matricula = ?
 							  AND t.id_professor = ?
 							ORDER BY f.id_falta DESC
 							LIMIT 1
@@ -57,7 +65,7 @@ public class AlteracaoFalta {
 
 					try (PreparedStatement comando = conexao.prepareStatement(consulta)) {
 
-						comando.setInt(1, idAluno);
+						comando.setString(1, matricula);
 						comando.setInt(2, idProfessor);
 
 						try (ResultSet resultado = comando.executeQuery()) {
@@ -68,6 +76,7 @@ public class AlteracaoFalta {
 								return;
 							}
 
+							idAluno = resultado.getInt("id_aluno");
 							idFalta = resultado.getObject("id_falta", Integer.class);
 							idDisciplina = resultado.getInt("id_disciplina");
 							quantidadeAntiga = resultado.getObject("quantidade", Integer.class);
@@ -198,7 +207,7 @@ public class AlteracaoFalta {
 			}
 
 		} catch (NumberFormatException e) {
-			System.out.println("Informe números inteiros válidos.");
+			System.out.println("Informe uma quantidade de faltas válida.");
 
 		} catch (Exception e) {
 			System.out.println("Erro ao alterar as faltas.");
