@@ -13,8 +13,15 @@ public class AlteracaoNota {
 	public static void executar(Scanner entrada, int idProfessor) {
 
 		try {
-			System.out.print("Digite o ID do aluno: ");
-			int idAluno = Integer.parseInt(entrada.nextLine());
+			System.out.print("Digite a matrícula do aluno: ");
+			String matricula = entrada.nextLine().trim();
+
+			if (matricula.isEmpty()) {
+				System.out.println("Informe uma matrícula válida.");
+				return;
+			}
+
+			int idAluno;
 
 			System.out.print("Digite a nova nota: ");
 			String valor = entrada.nextLine().replace(",", ".");
@@ -34,14 +41,15 @@ public class AlteracaoNota {
 				try {
 					String consulta = """
 							SELECT n.id_nota, n.valor,
-							             a.nome AS aluno,
-							             t.id_disciplina AS id_disciplina
+							a.id_aluno AS id_aluno,
+							a.nome AS aluno,
+							t.id_disciplina AS id_disciplina
 							FROM aluno a
 							JOIN turma t ON a.id_turma = t.id_turma
 							   LEFT JOIN nota n
 							    ON n.id_aluno = a.id_aluno
 							    AND n.id_disciplina = t.id_disciplina
-							WHERE a.id_aluno = ?
+							WHERE a.matricula = ?
 							  AND t.id_professor = ?
 							ORDER BY n.id_nota DESC
 							LIMIT 1
@@ -55,7 +63,7 @@ public class AlteracaoNota {
 
 					try (PreparedStatement comando = conexao.prepareStatement(consulta)) {
 
-						comando.setInt(1, idAluno);
+						comando.setString(1, matricula);
 						comando.setInt(2, idProfessor);
 
 						try (ResultSet resultado = comando.executeQuery()) {
@@ -66,6 +74,7 @@ public class AlteracaoNota {
 								return;
 							}
 
+							idAluno = resultado.getInt("id_aluno");
 							idNota = resultado.getObject("id_nota", Integer.class);
 							idDisciplina = resultado.getInt("id_disciplina");
 							notaAntiga = resultado.getBigDecimal("valor");
@@ -196,7 +205,7 @@ public class AlteracaoNota {
 			}
 
 		} catch (NumberFormatException | ArithmeticException e) {
-			System.out.println("Informe um ID e uma nota válidos.");
+		    System.out.println("Informe uma nota válida, com até duas casas decimais.");
 
 		} catch (Exception e) {
 			System.out.println("Erro ao alterar a nota.");

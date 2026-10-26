@@ -12,342 +12,319 @@ import java.util.List;
 import java.util.Scanner;
 
 public class SistemaNF {
-	private static final Logger logger =
-	        Logger.getLogger(SistemaNF.class.getName());
-    static String url = "jdbc:mysql://localhost:3306/sistema_notas_faltas";
-    static String usuarioBanco = System.getenv("MYSQL_APP_USER");
-    static String senhaBanco = System.getenv("MYSQL_APP_PASSWORD");
-
-    static class DadosAluno {
-        String nome;
-        String turma;
-        String disciplina;
-        BigDecimal nota;
-        int faltas;
-    }
-
-    public static List<DadosAluno> consultarDados(
-            String tipo, int idUsuario, String nomeBusca)
-            throws SQLException {
-
-        List<DadosAluno> alunos = new ArrayList<>();
-
-        if (idUsuario <= 0) {
-            throw new SQLException("Usuário sem vínculo válido.");
-        }
-
-        String sql = """
-            SELECT
-                a.nome AS aluno,
-                t.nome AS turma,
-                d.nome AS disciplina,
-
-                (SELECT n.valor
-                 FROM nota n
-                 WHERE n.id_aluno = a.id_aluno
-                   AND n.id_disciplina = t.id_disciplina
-                 ORDER BY n.id_nota DESC
-                 LIMIT 1) AS nota,
-
-                COALESCE(
-                    (SELECT f.quantidade
-                     FROM falta f
-                     WHERE f.id_aluno = a.id_aluno
-                       AND f.id_disciplina = t.id_disciplina
-                     ORDER BY f.id_falta DESC
-                     LIMIT 1),
-                    0
-                ) AS faltas
-
-            FROM aluno a
-
-            INNER JOIN turma t
-                ON a.id_turma = t.id_turma
-
-            INNER JOIN disciplina d
-                ON t.id_disciplina = d.id_disciplina
-            """;
-
-        if (tipo.equals("PROFESSOR")) {
-            sql += " WHERE t.id_professor = ?";
-        } else if (tipo.equals("ALUNO")) {
-            sql += " WHERE a.id_aluno = ?";
-        } else {
-            throw new SQLException("Tipo de usuário inválido.");
-        }
-
-        if (tipo.equals("PROFESSOR") && nomeBusca != null) {
-            sql += " AND a.nome LIKE ?";
-        }
-
-        sql += " ORDER BY a.nome";
-
-        try (
-            Connection conexao = DriverManager.getConnection(
-                url, usuarioBanco, senhaBanco
-            );
-            PreparedStatement comando =
-                conexao.prepareStatement(sql)
-        ) {
-
-            comando.setInt(1, idUsuario);
-
-            if (tipo.equals("PROFESSOR") && nomeBusca != null) {
-                comando.setString(2, "%" + nomeBusca.trim() + "%");
-            }
-
-            try (ResultSet resultado = comando.executeQuery()) {
-
-                while (resultado.next()) {
-
-                    DadosAluno aluno = new DadosAluno();
-
-                    aluno.nome = resultado.getString("aluno");
-                    aluno.turma = resultado.getString("turma");
-                    aluno.disciplina =
-                        resultado.getString("disciplina");
-                    aluno.nota = resultado.getBigDecimal("nota");
-                    aluno.faltas = resultado.getInt("faltas");
-
-                    alunos.add(aluno);
-                }
-            }
-        }
+	private static final Logger logger = Logger.getLogger(SistemaNF.class.getName());
+	static String url = "jdbc:mysql://localhost:3306/sistema_notas_faltas";
+	static String usuarioBanco = System.getenv("MYSQL_APP_USER");
+	static String senhaBanco = System.getenv("MYSQL_APP_PASSWORD");
+
+	static class DadosAluno {
+		String nome;
+		String matricula;
+		String turma;
+		String disciplina;
+		BigDecimal nota;
+		int faltas;
+	}
+
+	public static List<DadosAluno> consultarDados(String tipo, int idUsuario, String nomeBusca) throws SQLException {
+
+		List<DadosAluno> alunos = new ArrayList<>();
+
+		if (idUsuario <= 0) {
+			throw new SQLException("Usuário sem vínculo válido.");
+		}
+
+		String sql = """
+				        SELECT
+				a.nome AS aluno,
+				a.matricula AS matricula,
+				t.nome AS turma,
+				d.nome AS disciplina,
+
+				            (SELECT n.valor
+				             FROM nota n
+				             WHERE n.id_aluno = a.id_aluno
+				               AND n.id_disciplina = t.id_disciplina
+				             ORDER BY n.id_nota DESC
+				             LIMIT 1) AS nota,
+
+				            COALESCE(
+				                (SELECT f.quantidade
+				                 FROM falta f
+				                 WHERE f.id_aluno = a.id_aluno
+				                   AND f.id_disciplina = t.id_disciplina
+				                 ORDER BY f.id_falta DESC
+				                 LIMIT 1),
+				                0
+				            ) AS faltas
+
+				        FROM aluno a
 
-        return alunos;
-    }
+				        INNER JOIN turma t
+				            ON a.id_turma = t.id_turma
 
-    public static void mostrarDados(
-            List<DadosAluno> alunos, int opcao) {
+				        INNER JOIN disciplina d
+				            ON t.id_disciplina = d.id_disciplina
+				        """;
 
-        if (alunos.isEmpty()) {
-            System.out.println("Nenhum aluno encontrado.");
-            return;
-        }
+		if (tipo.equals("PROFESSOR")) {
+			sql += " WHERE t.id_professor = ?";
+		} else if (tipo.equals("ALUNO")) {
+			sql += " WHERE a.id_aluno = ?";
+		} else {
+			throw new SQLException("Tipo de usuário inválido.");
+		}
 
-        for (DadosAluno aluno : alunos) {
+		if (tipo.equals("PROFESSOR") && nomeBusca != null) {
+			sql += " AND a.nome LIKE ?";
+		}
 
-            String nota = aluno.nota == null
-                    ? "Não cadastrada"
-                    : aluno.nota.toPlainString();
-
-            switch (opcao) {
-
-                case 1:
-                    System.out.println("Aluno: " + aluno.nome);
-                    break;
-
-                case 2:
-                    System.out.println("Aluno encontrado!");
-                    System.out.println("Nome: " + aluno.nome);
-                    System.out.println("Turma: " + aluno.turma);
-                    System.out.println(
-                        "Disciplina: " + aluno.disciplina
-                    );
-                    break;
-
-                case 3:
-                    System.out.println("Aluno: " + aluno.nome);
-                    System.out.println("Nota: " + nota);
-                    break;
-
-                case 4:
-                    System.out.println("Aluno: " + aluno.nome);
-                    System.out.println("Faltas: " + aluno.faltas);
-                    break;
+		sql += " ORDER BY a.nome";
 
-                case 5:
-
-                    System.out.println("\n--- SITUAÇÃO DO ALUNO ---");
-                    System.out.println("Aluno: " + aluno.nome);
-                    System.out.println("Nota: " + nota);
-                    System.out.println("Faltas: " + aluno.faltas);
+		try (Connection conexao = DriverManager.getConnection(url, usuarioBanco, senhaBanco);
+				PreparedStatement comando = conexao.prepareStatement(sql)) {
 
-                    int totalAulas = 120;
-                    double frequencia = 100.0 *
-                            (totalAulas - aluno.faltas) / totalAulas;
+			comando.setInt(1, idUsuario);
 
-                    System.out.printf("Frequência: %.2f%%%n", frequencia);
+			if (tipo.equals("PROFESSOR") && nomeBusca != null) {
+				comando.setString(2, "%" + nomeBusca.trim() + "%");
+			}
 
-                    if (aluno.nota == null) {
+			try (ResultSet resultado = comando.executeQuery()) {
 
-                        System.out.println("Situação: Indefinida");
+				while (resultado.next()) {
 
-                    } else {
+					DadosAluno aluno = new DadosAluno();
 
-                        boolean notaSuficiente =
-                            aluno.nota.compareTo(new BigDecimal("6.0")) >= 0;
+					aluno.nome = resultado.getString("aluno");
+					aluno.matricula = resultado.getString("matricula");
+					aluno.turma = resultado.getString("turma");
+					aluno.disciplina = resultado.getString("disciplina");
+					aluno.nota = resultado.getBigDecimal("nota");
+					aluno.faltas = resultado.getInt("faltas");
 
-                        boolean faltasSuficientes = aluno.faltas <= 30;
+					alunos.add(aluno);
+				}
+			}
+		}
 
-                        if (notaSuficiente && faltasSuficientes) {
-                            System.out.println("Situação: Aprovado");
+		return alunos;
+	}
 
-                        } else if (!notaSuficiente && !faltasSuficientes) {
-                            System.out.println("Situação: Reprovado por nota e faltas");
+	public static void mostrarDados(List<DadosAluno> alunos, int opcao) {
 
-                        } else if (!notaSuficiente) {
-                            System.out.println("Situação: Reprovado por nota");
+		if (alunos.isEmpty()) {
+			System.out.println("Nenhum aluno encontrado.");
+			return;
+		}
 
-                        } else {
-                            System.out.println("Situação: Reprovado por faltas");
-                        }
-                    }
+		for (DadosAluno aluno : alunos) {
 
-                    break;
-            }
-        }
-    }
-    private static void registrarErroConsulta(SQLException e) {
-        System.out.println("Não foi possível consultar os dados. Tente novamente.");
+			String nota = aluno.nota == null ? "Não cadastrada" : aluno.nota.toPlainString();
 
-        logger.warning("Erro na consulta ao MySQL. SQLState: "
-                + e.getSQLState()
-                + " | Código: "
-                + e.getErrorCode());
-    }
-    public static int lerOpcao(Scanner entrada) {
-        System.out.print("Digite uma opção: ");
+			switch (opcao) {
 
-        try {
-            return Integer.parseInt(entrada.nextLine().trim());
-        } catch (NumberFormatException e) {
-            return -1;
-        }
-    }
+			case 1:
+				System.out.println("Aluno: " + aluno.nome + " | Matrícula: " + aluno.matricula);
+				break;
 
-    public static void menuProfessor(
-            Scanner entrada, int idProfessor) {
+			case 2:
+				System.out.println("Aluno encontrado!");
+				System.out.println("Nome: " + aluno.nome);
+				System.out.println("Turma: " + aluno.turma);
+				System.out.println("Disciplina: " + aluno.disciplina);
+				break;
 
-        int opcao = 0;
+			case 3:
+				System.out.println("Aluno: " + aluno.nome);
+				System.out.println("Nota: " + nota);
+				break;
 
-        do {
-            System.out.println("\n================================");
-            System.out.println("       MENU DO PROFESSOR");
-            System.out.println("================================");
-            System.out.println("1 - Listar alunos");
-            System.out.println("2 - Buscar aluno");
-            System.out.println("3 - Consultar notas");
-            System.out.println("4 - Consultar faltas");
-            System.out.println("5 - Ver situação do aluno");
-            System.out.println("6 - Alterar nota");
-            System.out.println("7 - Alterar faltas");
-            System.out.println("8 - Verificar integridade do histórico");
-            System.out.println("9 - Sair");
-            System.out.println("================================");
+			case 4:
+				System.out.println("Aluno: " + aluno.nome);
+				System.out.println("Faltas: " + aluno.faltas);
+				break;
 
-            opcao = lerOpcao(entrada);
+			case 5:
 
-            if (opcao >= 1 && opcao <= 5) {
+				System.out.println("\n--- SITUAÇÃO DO ALUNO ---");
+				System.out.println("Aluno: " + aluno.nome);
+				System.out.println("Nota: " + nota);
+				System.out.println("Faltas: " + aluno.faltas);
 
-                String nomeBusca = null;
+				int totalAulas = 120;
+				double frequencia = 100.0 * (totalAulas - aluno.faltas) / totalAulas;
 
-                if (opcao != 1) {
-                    System.out.print("Digite o nome do aluno: ");
-                    nomeBusca = entrada.nextLine().trim();
-                }
+				System.out.printf("Frequência: %.2f%%%n", frequencia);
 
-                try {
-                    List<DadosAluno> alunos = consultarDados(
-                        "PROFESSOR", idProfessor, nomeBusca
-                    );
+				if (aluno.nota == null) {
 
-                    mostrarDados(alunos, opcao);
+					System.out.println("Situação: Indefinida");
 
-                } catch (SQLException e) {
-                    registrarErroConsulta(e);
-                }
+				} else {
 
-            } else if (opcao == 6) {
+					boolean notaSuficiente = aluno.nota.compareTo(new BigDecimal("6.0")) >= 0;
 
-                AlteracaoNota.executar(entrada, idProfessor);
+					boolean faltasSuficientes = aluno.faltas <= 30;
 
-            } else if (opcao == 7) {
+					if (notaSuficiente && faltasSuficientes) {
+						System.out.println("Situação: Aprovado");
 
-                AlteracaoFalta.executar(entrada, idProfessor);
+					} else if (!notaSuficiente && !faltasSuficientes) {
+						System.out.println("Situação: Reprovado por nota e faltas");
 
-            } else if (opcao == 8) {
+					} else if (!notaSuficiente) {
+						System.out.println("Situação: Reprovado por nota");
 
-                VerificacaoHistorico.executar();
+					} else {
+						System.out.println("Situação: Reprovado por faltas");
+					}
+				}
 
-            } else if (opcao == 9) {
+				break;
+			}
+		}
+	}
 
-                System.out.println("Saindo do sistema...");
+	private static void registrarErroConsulta(SQLException e) {
+		System.out.println("Não foi possível consultar os dados. Tente novamente.");
 
-            } else {
+		logger.warning("Erro na consulta ao MySQL. SQLState: " + e.getSQLState() + " | Código: " + e.getErrorCode());
+	}
 
-                System.out.println("Opção inválida.");
-            }
+	public static int lerOpcao(Scanner entrada) {
+		System.out.print("Digite uma opção: ");
 
-        } while (opcao != 9);
-    }
+		try {
+			return Integer.parseInt(entrada.nextLine().trim());
+		} catch (NumberFormatException e) {
+			return -1;
+		}
+	}
 
-    public static void menuAluno(
-            Scanner entrada, int idAluno) {
+	public static void menuProfessor(Scanner entrada, int idProfessor) {
 
-        int opcao = 0;
+		int opcao = 0;
 
-        do {
-            System.out.println("\n================================");
-            System.out.println("         MENU DO ALUNO");
-            System.out.println("================================");
-            System.out.println("1 - Consultar minhas notas");
-            System.out.println("2 - Consultar minhas faltas");
-            System.out.println("3 - Ver minha situação");
-            System.out.println("4 - Sair");
-            System.out.println("================================");
+		do {
+			System.out.println("\n================================");
+			System.out.println("       MENU DO PROFESSOR");
+			System.out.println("================================");
+			System.out.println("1 - Listar alunos");
+			System.out.println("2 - Buscar aluno");
+			System.out.println("3 - Consultar notas");
+			System.out.println("4 - Consultar faltas");
+			System.out.println("5 - Ver situação do aluno");
+			System.out.println("6 - Alterar nota");
+			System.out.println("7 - Alterar faltas");
+			System.out.println("8 - Verificar integridade do histórico");
+			System.out.println("9 - Sair");
+			System.out.println("================================");
 
-            opcao = lerOpcao(entrada);
+			opcao = lerOpcao(entrada);
 
-            if (opcao >= 1 && opcao <= 3) {
+			if (opcao >= 1 && opcao <= 5) {
 
-                try {
-                    List<DadosAluno> alunos = consultarDados(
-                        "ALUNO", idAluno, null
-                    );
+				String nomeBusca = null;
 
-                    mostrarDados(alunos, opcao + 2);
+				if (opcao != 1) {
+					System.out.print("Digite o nome do aluno: ");
+					nomeBusca = entrada.nextLine().trim();
+				}
 
-                } catch (SQLException e) {
-                    registrarErroConsulta(e);
-                }
+				try {
+					List<DadosAluno> alunos = consultarDados("PROFESSOR", idProfessor, nomeBusca);
 
-            } else if (opcao == 4) {
-                System.out.println("Saindo do sistema...");
-            } else {
-                System.out.println("Opção inválida.");
-            }
+					mostrarDados(alunos, opcao);
 
-        } while (opcao != 4);
-    }
+				} catch (SQLException e) {
+					registrarErroConsulta(e);
+				}
 
-    public static void main(String[] args) {
+			} else if (opcao == 6) {
 
-        Scanner entrada = new Scanner(System.in);
+				AlteracaoNota.executar(entrada, idProfessor);
 
-        Autenticacao.Usuario usuario =
-            Autenticacao.fazerLogin(entrada);
+			} else if (opcao == 7) {
 
-        if (usuario == null) {
-            System.out.println("Acesso não autorizado.");
-            entrada.close();
-            return;
-        }
+				AlteracaoFalta.executar(entrada, idProfessor);
 
-        if (usuario.tipo.equals("PROFESSOR")
-                && usuario.idProfessor > 0) {
+			} else if (opcao == 8) {
 
-            menuProfessor(entrada, usuario.idProfessor);
+				VerificacaoHistorico.executar();
 
-        } else if (usuario.tipo.equals("ALUNO")
-                && usuario.idAluno > 0) {
+			} else if (opcao == 9) {
 
-            menuAluno(entrada, usuario.idAluno);
+				System.out.println("Saindo do sistema...");
 
-        } else {
-            System.out.println("Usuário sem permissão válida.");
-        }
+			} else {
 
-        entrada.close();
-    }
+				System.out.println("Opção inválida.");
+			}
+
+		} while (opcao != 9);
+	}
+
+	public static void menuAluno(Scanner entrada, int idAluno) {
+
+		int opcao = 0;
+
+		do {
+			System.out.println("\n================================");
+			System.out.println("         MENU DO ALUNO");
+			System.out.println("================================");
+			System.out.println("1 - Consultar minhas notas");
+			System.out.println("2 - Consultar minhas faltas");
+			System.out.println("3 - Ver minha situação");
+			System.out.println("4 - Sair");
+			System.out.println("================================");
+
+			opcao = lerOpcao(entrada);
+
+			if (opcao >= 1 && opcao <= 3) {
+
+				try {
+					List<DadosAluno> alunos = consultarDados("ALUNO", idAluno, null);
+
+					mostrarDados(alunos, opcao + 2);
+
+				} catch (SQLException e) {
+					registrarErroConsulta(e);
+				}
+
+			} else if (opcao == 4) {
+				System.out.println("Saindo do sistema...");
+			} else {
+				System.out.println("Opção inválida.");
+			}
+
+		} while (opcao != 4);
+	}
+
+	public static void main(String[] args) {
+
+		Scanner entrada = new Scanner(System.in);
+
+		Autenticacao.Usuario usuario = Autenticacao.fazerLogin(entrada);
+
+		if (usuario == null) {
+			System.out.println("Acesso não autorizado.");
+			entrada.close();
+			return;
+		}
+
+		if (usuario.tipo.equals("PROFESSOR") && usuario.idProfessor > 0) {
+
+			menuProfessor(entrada, usuario.idProfessor);
+
+		} else if (usuario.tipo.equals("ALUNO") && usuario.idAluno > 0) {
+
+			menuAluno(entrada, usuario.idAluno);
+
+		} else {
+			System.out.println("Usuário sem permissão válida.");
+		}
+
+		entrada.close();
+	}
 }
